@@ -47,6 +47,7 @@ struct TeleopTwistJoy::Impl
   ros::Subscriber joy_sub;
   ros::Publisher cmd_vel_pub;
 
+  bool require_enable_button;
   int enable_button;
   int enable_turbo_button;
 
@@ -71,6 +72,7 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   pimpl_->cmd_vel_pub = nh->advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
   pimpl_->joy_sub = nh->subscribe<sensor_msgs::Joy>("joy", 1, &TeleopTwistJoy::Impl::joyCallback, pimpl_);
 
+  nh_param->param<bool>("require_enable_button", pimpl_->require_enable_button, false);
   nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
   nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
 
@@ -162,7 +164,7 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
   {
     sendCmdVelMsg(joy_msg, "turbo");
   }
-  else if (joy_msg->buttons.size() > enable_button &&
+  else if (!require_enable_button || joy_msg->buttons.size() > enable_button &&
            joy_msg->buttons[enable_button])
   {
     sendCmdVelMsg(joy_msg, "normal");
