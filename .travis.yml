@@ -25,6 +25,7 @@ env:
     - ROS_DISTRO="indigo"
     - ROS_DISTRO="kinetic"
     - ROS_DISTRO="melodic"
+    - ROS_DISTRO="noetic"
 
 # clone and run industrial_ci
 install:
