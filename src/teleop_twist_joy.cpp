@@ -30,10 +30,8 @@ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSI
 #include <map>
 #include <string>
 
-
 namespace teleop_twist_joy
 {
-
 /**
  * Internal members of class. This is the pimpl idiom, and allows more flexibility in adding
  * parameters later without breaking ABI compatibility, for robots which link TeleopTwistJoy
@@ -48,14 +46,15 @@ struct TeleopTwistJoy::Impl
   ros::Publisher cmd_vel_pub;
 
   bool require_enable_button;
+  bool require_turbo_button;
   int enable_button;
   int enable_turbo_button;
 
   std::map<std::string, int> axis_linear_map;
-  std::map< std::string, std::map<std::string, double> > scale_linear_map;
+  std::map<std::string, std::map<std::string, double> > scale_linear_map;
 
   std::map<std::string, int> axis_angular_map;
-  std::map< std::string, std::map<std::string, double> > scale_angular_map;
+  std::map<std::string, std::map<std::string, double> > scale_angular_map;
 
   bool sent_disable_msg;
 };
@@ -73,6 +72,7 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   pimpl_->joy_sub = nh->subscribe<sensor_msgs::Joy>("joy", 1, &TeleopTwistJoy::Impl::joyCallback, pimpl_);
 
   nh_param->param<bool>("require_enable_button", pimpl_->require_enable_button, false);
+  nh_param->param<bool>("require_turbo_button", pimpl_->require_turbo_button, true);
   nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
   nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
 
@@ -97,41 +97,33 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   {
     nh_param->param<int>("axis_angular", pimpl_->axis_angular_map["yaw"], 0);
     nh_param->param<double>("scale_angular", pimpl_->scale_angular_map["normal"]["yaw"], 0.5);
-    nh_param->param<double>("scale_angular_turbo",
-        pimpl_->scale_angular_map["turbo"]["yaw"], pimpl_->scale_angular_map["normal"]["yaw"]);
+    nh_param->param<double>("scale_angular_turbo", pimpl_->scale_angular_map["turbo"]["yaw"], pimpl_->scale_angular_map["normal"]["yaw"]);
   }
-
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require turbo button %i.", pimpl_->require_turbo_button);
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require enable button %i.", pimpl_->require_enable_button);
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
-  ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-      "Turbo on button %i.", pimpl_->enable_turbo_button);
+  ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo on button %i.", pimpl_->enable_turbo_button);
 
-  for (std::map<std::string, int>::iterator it = pimpl_->axis_linear_map.begin();
-      it != pimpl_->axis_linear_map.end(); ++it)
+  for (std::map<std::string, int>::iterator it = pimpl_->axis_linear_map.begin(); it != pimpl_->axis_linear_map.end(); ++it)
   {
-    ROS_INFO_NAMED("TeleopTwistJoy", "Linear axis %s on %i at scale %f.",
-    it->first.c_str(), it->second, pimpl_->scale_linear_map["normal"][it->first]);
-    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-        "Turbo for linear axis %s is scale %f.", it->first.c_str(), pimpl_->scale_linear_map["turbo"][it->first]);
+    ROS_INFO_NAMED("TeleopTwistJoy", "Linear axis %s on %i at scale %f.", it->first.c_str(), it->second, pimpl_->scale_linear_map["normal"][it->first]);
+    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo for linear axis %s is scale %f.", it->first.c_str(),
+                        pimpl_->scale_linear_map["turbo"][it->first]);
   }
 
-  for (std::map<std::string, int>::iterator it = pimpl_->axis_angular_map.begin();
-      it != pimpl_->axis_angular_map.end(); ++it)
+  for (std::map<std::string, int>::iterator it = pimpl_->axis_angular_map.begin(); it != pimpl_->axis_angular_map.end(); ++it)
   {
-    ROS_INFO_NAMED("TeleopTwistJoy", "Angular axis %s on %i at scale %f.",
-    it->first.c_str(), it->second, pimpl_->scale_angular_map["normal"][it->first]);
-    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy",
-        "Turbo for angular axis %s is scale %f.", it->first.c_str(), pimpl_->scale_angular_map["turbo"][it->first]);
+    ROS_INFO_NAMED("TeleopTwistJoy", "Angular axis %s on %i at scale %f.", it->first.c_str(), it->second, pimpl_->scale_angular_map["normal"][it->first]);
+    ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo for angular axis %s is scale %f.", it->first.c_str(),
+                        pimpl_->scale_angular_map["turbo"][it->first]);
   }
 
   pimpl_->sent_disable_msg = false;
 }
 
-double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::string, int>& axis_map,
-              const std::map<std::string, double>& scale_map, const std::string& fieldname)
+double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::string, int>& axis_map, const std::map<std::string, double>& scale_map, const std::string& fieldname)
 {
-  if (axis_map.find(fieldname) == axis_map.end() ||
-      scale_map.find(fieldname) == scale_map.end() ||
-      joy_msg->axes.size() <= axis_map.at(fieldname))
+  if (axis_map.find(fieldname) == axis_map.end() || scale_map.find(fieldname) == scale_map.end() || joy_msg->axes.size() <= axis_map.at(fieldname))
   {
     return 0.0;
   }
@@ -139,8 +131,7 @@ double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::str
   return joy_msg->axes[axis_map.at(fieldname)] * scale_map.at(fieldname);
 }
 
-void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_msg,
-                                         const std::string& which_map)
+void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::string& which_map)
 {
   // Initializes with zeros by default.
   geometry_msgs::Twist cmd_vel_msg;
@@ -158,14 +149,11 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_m
 
 void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg)
 {
-  if (enable_turbo_button >= 0 &&
-      joy_msg->buttons.size() > enable_turbo_button &&
-      joy_msg->buttons[enable_turbo_button])
+  if (!require_turbo_button || enable_turbo_button >= 0 && joy_msg->buttons.size() > enable_turbo_button && joy_msg->buttons[enable_turbo_button])
   {
     sendCmdVelMsg(joy_msg, "turbo");
   }
-  else if (!require_enable_button || joy_msg->buttons.size() > enable_button &&
-           joy_msg->buttons[enable_button])
+  else if (!require_enable_button || joy_msg->buttons.size() > enable_button && joy_msg->buttons[enable_button])
   {
     sendCmdVelMsg(joy_msg, "normal");
   }
