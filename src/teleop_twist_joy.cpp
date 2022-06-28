@@ -50,12 +50,15 @@ struct TeleopTwistJoy::Impl
   int enable_button;
   int enable_turbo_button;
 
-  double min_lin;
-  double max_lin;
-  double min_ang;
-  double max_ang;
-  double min_ICC;
-  double max_ICC;
+  std::map<std::string, double> min_linear_map;
+  std::map<std::string, double> max_linear_map;
+
+  std::map<std::string, double> min_angular_map;
+  std::map<std::string, double> max_angular_map;
+
+  std::map<std::string, double> deadzone_linear_map;
+
+  std::map<std::string, double> deadzone_angular_map;
 
   std::map<std::string, int> axis_linear_map;
 
@@ -91,6 +94,22 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
     nh_param->param<int>("axis_angular", pimpl_->axis_angular_map["yaw"], 0);
   }
 
+  if (!nh_param->getParam("deadzone_linear", pimpl_->deadzone_linear_map))
+  {
+    for (const auto& fieldname : pimpl_->axis_linear_map)
+    {
+      nh_param->param<double>("deadzone_linear", pimpl_->deadzone_linear_map[fieldname.first], 0.0);
+    }
+  }
+
+  if (!nh_param->getParam("deadzone_angular", pimpl_->deadzone_angular_map))
+  {
+    for (const auto& fieldname : pimpl_->axis_angular_map)
+    {
+      nh_param->param<double>("deadzone_angular", pimpl_->deadzone_angular_map[fieldname.first], 0.0);
+    }
+  }
+
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require turbo button %i.", pimpl_->require_turbo_button);
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require enable button %i.", pimpl_->require_enable_button);
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
@@ -108,26 +127,61 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
     ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo for angular axis %s", it->first.c_str());
   }
 
+  for (std::map<std::string, double>::iterator it = pimpl_->deadzone_linear_map.begin(); it != pimpl_->deadzone_linear_map.end(); ++it)
+  {
+    ROS_INFO_NAMED("TeleopTwistJoy", "Linear deadzone of %s is %f", it->first.c_str(), it->second);
+  }
+
+  for (std::map<std::string, double>::iterator it = pimpl_->deadzone_angular_map.begin(); it != pimpl_->deadzone_angular_map.end(); ++it)
+  {
+    ROS_INFO_NAMED("TeleopTwistJoy", "Angular deadzone of %s is %f", it->first.c_str(), it->second);
+  }
+
   pimpl_->sent_disable_msg = false;
 
-  pimpl_->min_lin = -0.261;
-  pimpl_->max_lin = 0.261;
-  pimpl_->min_ang = -0.555;
-  pimpl_->max_ang = 0.555;
-  pimpl_->min_ICC = -1.0;
-  pimpl_->max_ICC = 1.0;
+  pimpl_->min_linear_map["x"] = -0.261;
+  pimpl_->max_linear_map["x"] = 0.261;
+  pimpl_->min_linear_map["y"] = -0.261;
+  pimpl_->max_linear_map["y"] = 0.261;
+
+  pimpl_->min_angular_map["roll"] = -1.0;
+  pimpl_->max_angular_map["roll"] = 1.0;
+  pimpl_->min_angular_map["yaw"] = -0.555;
+  pimpl_->max_angular_map["yaw"] = 0.555;
 }
 
-double rescaleValue(double value, double min, double max) { return (max - min) * (value + 1) / 2 + min; }
+/**
+ * @return the sign of the given value
+*/
+int sgn(double val) { return (val < 0) - (0 < val); }
 
-double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::string, int>& axis_map, const std::string& fieldname, double min, double max)
+/**
+ * @return zero if the given value is within the deadzone in range [-1,1]
+ * else returns adjusted to the deadzone new value
+ */
+double ignoreDeadzone(double value, double deadzone) { return (std::abs(value) <= deadzone) ? 0.0 : value - deadzone * sgn(value); }
+
+/**
+ * @return value adjusted to the given deadzone and rescaled to a new value range according to the given min and max
+ */
+double rescaleValue(double value, double min, double max, double deadzone)
 {
-  if (axis_map.find(fieldname) == axis_map.end() || joy_msg->axes.size() <= axis_map.at(fieldname))
+  double old_min = -1.0 - deadzone;
+  double old_max = 1.0 + deadzone;
+
+  return (max - min) * (ignoreDeadzone(value, deadzone) - old_min) / (old_max - old_min) + min;
+}
+
+double getVal(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::map<std::string, int>& axis_map, const std::map<std::string, double>& deadzone_map,
+              const std::string& fieldname, const std::map<std::string, double>& min_map, const std::map<std::string, double>& max_map)
+{
+  if (axis_map.find(fieldname) == axis_map.end() || joy_msg->axes.size() <= axis_map.at(fieldname) || deadzone_map.find(fieldname) == deadzone_map.end() ||
+      min_map.find(fieldname) == min_map.end() || max_map.find(fieldname) == max_map.end())
   {
     return 0.0;
   }
 
-  return rescaleValue(joy_msg->axes[axis_map.at(fieldname)], min, max);
+  return rescaleValue(joy_msg->axes[axis_map.at(fieldname)], min_map.at(fieldname), max_map.at(fieldname), deadzone_map.at(fieldname));
 }
 
 void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_msg, const std::string& which_map)
@@ -135,13 +189,13 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_m
   // Initializes with zeros by default.
   geometry_msgs::Twist cmd_vel_msg;
 
-  cmd_vel_msg.linear.x = getVal(joy_msg, axis_linear_map, "x", min_lin, max_lin);
-  cmd_vel_msg.linear.y = getVal(joy_msg, axis_linear_map, "y", min_lin, max_lin);
-  cmd_vel_msg.linear.z = getVal(joy_msg, axis_linear_map, "z", min_lin, max_lin);
+  cmd_vel_msg.linear.x = getVal(joy_msg, axis_linear_map, deadzone_linear_map, "x", min_linear_map, max_linear_map);
+  cmd_vel_msg.linear.y = getVal(joy_msg, axis_linear_map, deadzone_linear_map, "y", min_linear_map, max_linear_map);
+  cmd_vel_msg.linear.z = getVal(joy_msg, axis_linear_map, deadzone_linear_map, "z", min_linear_map, max_linear_map);
   // multiply the z angular velocity with the right factor for the robot to steer in the right direction
-  cmd_vel_msg.angular.z = (cmd_vel_msg.linear.x < 0.0 ? 1.0 : -1.0) * getVal(joy_msg, axis_angular_map, "yaw", min_ang, max_ang);
-  cmd_vel_msg.angular.y = getVal(joy_msg, axis_angular_map, "pitch", min_ang, max_ang);
-  cmd_vel_msg.angular.x = getVal(joy_msg, axis_angular_map, "roll", min_ICC, max_ICC);
+  cmd_vel_msg.angular.z = (cmd_vel_msg.linear.x < 0.0 ? 1.0 : -1.0) * getVal(joy_msg, axis_angular_map, deadzone_angular_map, "yaw", min_angular_map, max_angular_map);
+  cmd_vel_msg.angular.y = getVal(joy_msg, axis_angular_map, deadzone_angular_map, "pitch", min_angular_map, max_angular_map);
+  cmd_vel_msg.angular.x = getVal(joy_msg, axis_angular_map, deadzone_angular_map, "roll", min_angular_map, max_angular_map);
 
   cmd_vel_pub.publish(cmd_vel_msg);
   sent_disable_msg = false;
