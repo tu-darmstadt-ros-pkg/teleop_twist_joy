@@ -110,10 +110,10 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
 
   pimpl_->sent_disable_msg = false;
 
-  pimpl_->min_lin = -0.05151;
-  pimpl_->max_lin = 0.05151;
-  pimpl_->min_ang = -0.11;
-  pimpl_->max_ang = 0.11;
+  pimpl_->min_lin = -0.261;
+  pimpl_->max_lin = 0.261;
+  pimpl_->min_ang = -0.555;
+  pimpl_->max_ang = 0.555;
   pimpl_->min_ICC = -1.0;
   pimpl_->max_ICC = 1.0;
 }
