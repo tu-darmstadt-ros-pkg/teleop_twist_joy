@@ -139,7 +139,7 @@ void TeleopTwistJoy::Impl::sendCmdVelMsg(const sensor_msgs::Joy::ConstPtr& joy_m
   cmd_vel_msg.linear.y = getVal(joy_msg, axis_linear_map, "y", min_lin, max_lin);
   cmd_vel_msg.linear.z = getVal(joy_msg, axis_linear_map, "z", min_lin, max_lin);
   // multiply the z angular velocity with the right factor for the robot to steer in the right direction
-  cmd_vel_msg.angular.z = (cmd_vel_msg.linear.x < 0 ? 1 : -1) * getVal(joy_msg, axis_angular_map, "yaw", min_ang, max_ang);
+  cmd_vel_msg.angular.z = (cmd_vel_msg.linear.x < 0.0 ? 1.0 : -1.0) * getVal(joy_msg, axis_angular_map, "yaw", min_ang, max_ang);
   cmd_vel_msg.angular.y = getVal(joy_msg, axis_angular_map, "pitch", min_ang, max_ang);
   cmd_vel_msg.angular.x = getVal(joy_msg, axis_angular_map, "roll", min_ICC, max_ICC);
 
