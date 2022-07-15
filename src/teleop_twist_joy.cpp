@@ -45,9 +45,9 @@ struct TeleopTwistJoy::Impl
   ros::Subscriber joy_sub;
   ros::Publisher cmd_vel_pub;
 
-  bool require_enable_button;
+  int deadman_switch;
+
   bool require_turbo_button;
-  int enable_button;
   int enable_turbo_button;
 
   std::map<std::string, double> min_linear_map;
@@ -79,9 +79,9 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   pimpl_->cmd_vel_pub = nh->advertise<geometry_msgs::Twist>("cmd_vel", 1, true);
   pimpl_->joy_sub = nh->subscribe<sensor_msgs::Joy>("joy", 1, &TeleopTwistJoy::Impl::joyCallback, pimpl_);
 
-  nh_param->param<bool>("require_enable_button", pimpl_->require_enable_button, false);
+  nh_param->param<int>("deadman_switch", pimpl_->deadman_switch, -1);
+
   nh_param->param<bool>("require_turbo_button", pimpl_->require_turbo_button, true);
-  nh_param->param<int>("enable_button", pimpl_->enable_button, 0);
   nh_param->param<int>("enable_turbo_button", pimpl_->enable_turbo_button, -1);
 
   if (!nh_param->getParam("axis_linear", pimpl_->axis_linear_map))
@@ -111,8 +111,7 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   }
 
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require turbo button %i.", pimpl_->require_turbo_button);
-  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require enable button %i.", pimpl_->require_enable_button);
-  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop enable button %i.", pimpl_->enable_button);
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop deadman_switch %i.", pimpl_->deadman_switch);
   ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo on button %i.", pimpl_->enable_turbo_button);
 
   for (std::map<std::string, int>::iterator it = pimpl_->axis_linear_map.begin(); it != pimpl_->axis_linear_map.end(); ++it)
@@ -144,8 +143,8 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
   pimpl_->min_linear_map["y"] = -0.261;
   pimpl_->max_linear_map["y"] = 0.261;
 
-  pimpl_->min_angular_map["roll"] = -1.0;
-  pimpl_->max_angular_map["roll"] = 1.0;
+  pimpl_->min_angular_map["roll"] = -0.3;
+  pimpl_->max_angular_map["roll"] = 0.3;
   pimpl_->min_angular_map["yaw"] = -0.555;
   pimpl_->max_angular_map["yaw"] = 0.555;
 }
@@ -207,13 +206,13 @@ void TeleopTwistJoy::Impl::joyCallback(const sensor_msgs::Joy::ConstPtr& joy_msg
   {
     sendCmdVelMsg(joy_msg, "turbo");
   }
-  else if (!require_enable_button || joy_msg->buttons.size() > enable_button && joy_msg->buttons[enable_button])
+  else if (deadman_switch == -1 || joy_msg->buttons.size() > deadman_switch && joy_msg->buttons[deadman_switch])
   {
     sendCmdVelMsg(joy_msg, "normal");
   }
   else
   {
-    // When enable button is released, immediately send a single no-motion command
+    // When deadman switch is released, immediately send a single no-motion command
     // in order to stop the robot.
     if (!sent_disable_msg)
     {
