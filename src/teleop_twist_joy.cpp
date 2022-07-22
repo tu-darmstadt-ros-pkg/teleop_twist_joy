@@ -170,7 +170,7 @@ double ignoreDeadzone(double value, double deadzone) { return (std::abs(value) <
 
 double updateLinearXToRotationDeadzone(double lin_x_value, double ang_z_value, double deadzone_rotation)
 {
-  double interpolated_deadzone_rotation = deadzone_rotation * ang_z_value;
+  double interpolated_deadzone_rotation = deadzone_rotation * std::abs(ang_z_value);
 
   return (std::abs(lin_x_value) <= interpolated_deadzone_rotation) ? 0.0 : lin_x_value;
 }
