@@ -66,6 +66,11 @@ struct TeleopTwistJoy::Impl
   std::map<std::string, int> axis_angular_map;
 
   bool sent_disable_msg;
+
+  double scale_linear;
+  double scale_roll;
+  double scale_pitch;
+  double scale_yaw;
 };
 
 /**
@@ -111,10 +116,13 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
     }
   }
 
-  if (!nh_param->getParam("deadzone_rotation", pimpl_->deadzone_rotation))
-  {
-    nh_param->param<double>("deadzone_rotation", pimpl_->deadzone_rotation, 0.0);
-  }
+  nh_param->param<double>("deadzone_rotation", pimpl_->deadzone_rotation, 0.0);
+
+  nh_param->param<double>("scale_linear", pimpl_->scale_linear, 1.0);
+
+  nh_param->param<double>("scale_roll", pimpl_->scale_roll, 1.0);
+  nh_param->param<double>("scale_pitch", pimpl_->scale_pitch, 1.0);
+  nh_param->param<double>("scale_yaw", pimpl_->scale_yaw, 1.0);
 
   // ROS_INFO_NAMED("TeleopTwistJoy", "Teleop require turbo button %i.", pimpl_->require_turbo_button);
   // ROS_INFO_COND_NAMED(pimpl_->enable_turbo_button >= 0, "TeleopTwistJoy", "Turbo on button %i.", pimpl_->enable_turbo_button);
@@ -144,17 +152,27 @@ TeleopTwistJoy::TeleopTwistJoy(ros::NodeHandle* nh, ros::NodeHandle* nh_param)
 
   ROS_INFO_NAMED("TeleopTwistJoy", "Teleop deadzone rotation %f.", pimpl_->deadzone_rotation);
 
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop roll scaling %f.", pimpl_->scale_roll);
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop pitch scaling %f.", pimpl_->scale_pitch);
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop yaw scaling %f.", pimpl_->scale_yaw);
+
+  ROS_INFO_NAMED("TeleopTwistJoy", "Teleop linear scaling %f.", pimpl_->scale_linear);
+
   pimpl_->sent_disable_msg = false;
 
-  pimpl_->min_linear_map["x"] = -0.261;
-  pimpl_->max_linear_map["x"] = 0.261;
-  pimpl_->min_linear_map["y"] = -0.261;
-  pimpl_->max_linear_map["y"] = 0.261;
+  pimpl_->min_linear_map["x"] = -pimpl_->scale_linear;
+  pimpl_->max_linear_map["x"] = pimpl_->scale_linear;
+  pimpl_->min_linear_map["y"] = -pimpl_->scale_linear;
+  pimpl_->max_linear_map["y"] = pimpl_->scale_linear;
 
-  pimpl_->min_angular_map["roll"] = -0.3;
-  pimpl_->max_angular_map["roll"] = 0.3;
-  pimpl_->min_angular_map["yaw"] = -0.555;
-  pimpl_->max_angular_map["yaw"] = 0.555;
+  pimpl_->min_angular_map["roll"] = -pimpl_->scale_roll;
+  pimpl_->max_angular_map["roll"] = pimpl_->scale_roll;
+
+  pimpl_->min_angular_map["pitch"] = -pimpl_->scale_pitch;
+  pimpl_->max_angular_map["pitch"] = pimpl_->scale_pitch;
+
+  pimpl_->min_angular_map["yaw"] = -pimpl_->scale_yaw;
+  pimpl_->max_angular_map["yaw"] = pimpl_->scale_yaw;
 }
 
 /**
